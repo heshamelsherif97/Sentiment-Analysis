@@ -27,9 +27,9 @@ def filterTweets(labels, text):
     filteredText = []
     for i in range(1, len(labels)):
         clear = True
-        if " RT " in text[i].lower:
+        if " RT " in text[i]:
             clear = False
-        if len(text[i]) < 20 and clear == True:
+        if clear == True and len(text[i]) < 20:
             clear = False
         if clear == True and compareEnglishWords(text[i]) == False:
             clear = False
@@ -154,11 +154,3 @@ sentencesTrained = convertTokensToSentences(trainLoad)
 
 vv = TfidfVectorizer(norm = None)
 tfidf = vv.fit_transform(sentencesTrained)
-print(sorted(vv.vocabulary_.items(), key=lambda x : x[1]))
-
-
-# print(trainLoad[7])
-
-
-
-
