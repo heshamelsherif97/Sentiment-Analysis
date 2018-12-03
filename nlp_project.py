@@ -1,13 +1,21 @@
 import re, nltk, os, unicodedata
 import pickle
+import numpy as np
 import inflect
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import f1_score
 import pandas as pd
 from nltk.corpus import stopwords
 from nltk.stem.lancaster import LancasterStemmer
 
-# WordStemmer
 st = LancasterStemmer()
+nB = MultinomialNB()
+neigh = KNeighborsClassifier()
+rf = RandomForestClassifier(n_estimators = 100, random_state=0)
+
 #List contating common english words
 english_words = pd.read_csv(os.path.join("", 'english_words.csv'), names=[""])
 
@@ -31,9 +39,7 @@ def filterTweets(labels, text):
             clear = False
         if clear == True and len(text[i]) < 20:
             clear = False
-        if clear == True and compareEnglishWords(text[i]) == False:
-            clear = False
-        #Check with other tweets
+        #Check with other tweets and with english common words
         if clear == True:
             filteredLabels.append(labels[i])
             filteredText.append(text[i])
@@ -100,57 +106,114 @@ def normalizeText(words):
     g5 = remove_stopwords(g4)
     return g5
 
-# # Read CSV File
-# cols = ['tweet_id', "airline_sentiment", "airline_sentiment_confidence", "negativereason", "negativereason_confidence", "airline", "airline_sentiment_gold", "name", "negativereason_gold", "retweet_count", "text", "tweet_coord", "tweet_created", "tweet_location", "user_timezone"]
-# data_df = pd.read_csv(os.path.join("", 'Tweets.csv'), names=cols)
+def Tokenize_text(text):
+    Tokenized_text = []
+    for i in range(0, len(text)):
+        removedUrls = remove_Urls(text[i])
+        temp = nltk.word_tokenize(removedUrls)
+        words = [w.lower() for w in temp]
+        words = normalizeText(words)
+        words = [st.stem(t) for t in words]
+        Tokenized_text.append(words)
+    return Tokenized_text
 
-# # Get the required columns
-# labels = data_df['airline_sentiment'].values
-# text = data_df['text'].values
+def MultinomialNB_Classifier(training2sentences, text2sentences, trainLabels):
+    vv = TfidfVectorizer(norm = None)
+    tfidf = vv.fit_transform(training2sentences)
+    nB.fit(tfidf, trainLabels)
+    tfidf2 = vv.transform(text2sentences)
+    return nB.predict(tfidf2)
 
-# # labels, text = filterTweets(labels, text)
+def randomForest_Classifier(training2sentences, text2sentences, trainLabels):
+    vv = TfidfVectorizer(norm = None)
+    tfidf = vv.fit_transform(training2sentences)
+    rf.fit(tfidf, trainLabels)
+    tfidf2 = vv.transform(text2sentences)
+    return rf.predict(tfidf2)
 
-# # Extract Training set
-# trainLabels = labels[ 1 : int((len(labels)-1)*0.8) ]
-# trainText = text[ 1 : int((len(text)-1)*0.8) ]
+def knearstNeighbour_Classifier(training2sentences, text2sentences, trainLabels):
+    vv = TfidfVectorizer(norm = None)
+    tfidf = vv.fit_transform(training2sentences)
+    neigh.fit(tfidf, trainLabels)
+    tfidf2 = vv.transform(text2sentences)
+    return neigh.predict(tfidf2)
 
-# # Extract Testing set
-# testLabels = labels[ int((len(labels)-1)*0.8) :  len(labels)]
-# testText = labels[ int((len(text)-1)*0.8) :  len(text)]
+def evaluateResult(realLabels, predictedLabels):
+    return round(f1_score(realLabels, predictedLabels, average='micro') * 100, 2)
 
-# # Tokenize Text Training Set and perform Case Folding
-# Tokenized_text_training = []
-# for i in range(0, len(trainText)):
-#     removedUrls = remove_Urls(trainText[i])
-#     temp = nltk.word_tokenize(removedUrls)
-#     words = [w.lower() for w in temp]
-#     words = normalizeText(words)
-#     words = [st.stem(t) for t in words]
-#     Tokenized_text_training.append(words)
+# Read CSV File
+cols = ['tweet_id', "airline_sentiment", "airline_sentiment_confidence", "negativereason", "negativereason_confidence", "airline", "airline_sentiment_gold", "name", "negativereason_gold", "retweet_count", "text", "tweet_coord", "tweet_created", "tweet_location", "user_timezone"]
+data_df = pd.read_csv(os.path.join("", 'Tweets.csv'), names=cols)
 
-# # Tokenize Text Testing Set and perform Case Folding
-# Tokenized_text_testing = []
-# for i in range(0, len(testText)):
-#     removedUrls = remove_Urls(testText[i])
-#     temp = nltk.word_tokenize(removedUrls)
-#     words = [w.lower() for w in temp]
-#     words = normalizeText(words)
-#     words = [st.stem(t) for t in words]
-#     Tokenized_text_testing.append(words)    
+# Get the required columns
+labels = data_df['airline_sentiment'].values
+text = data_df['text'].values
 
-# with open('train', 'wb') as fp:
-#     pickle.dump(Tokenized_text_training, fp)
+# Filter Tweets
+filtered_labels, filtered_text = filterTweets(labels, text)
 
-# with open('test', 'wb') as fp:
-#     pickle.dump(Tokenized_text_testing, fp)
+# Extract Training set
+trainLabels = labels[ 1 : int((len(labels)-1)*0.8) ]
+trainText = text[ 1 : int((len(text)-1)*0.8) ]
 
-with open ('train', 'rb') as fp:
-    trainLoad = pickle.load(fp)
+# Extract filtered Training set 
+filtered_trainLabels = filtered_labels[ 1 : int((len(filtered_labels)-1)*0.8) ]
+filtered_trainText = filtered_text[ 1 : int((len(filtered_text)-1)*0.8) ]
 
-with open ('test', 'rb') as fp:
-    testLoad = pickle.load(fp)
+# Extract Testing set
+testLabels = labels[ int((len(labels)-1)*0.8) :  len(labels)]
+testText = text[ int((len(text)-1)*0.8) :  len(text)]
 
-sentencesTrained = convertTokensToSentences(trainLoad)
+# Extract filtered Testing set
+filtered_testLabels = filtered_labels[ int((len(filtered_labels)-1)*0.8) :  len(filtered_labels)]
+filtered_testText = filtered_text[ int((len(filtered_text)-1)*0.8) :  len(filtered_text)]
 
-vv = TfidfVectorizer(norm = None)
-tfidf = vv.fit_transform(sentencesTrained)
+# Tokenize and normailize
+text_training = Tokenize_text(trainText)
+text_test = Tokenize_text(testText)
+
+# convert tokens into sentences
+training2sentences = convertTokensToSentences(text_training)
+text2sentences = convertTokensToSentences(text_test)
+
+# Tokenize and normailize filtered
+filtered_text_training = Tokenize_text(filtered_trainText)
+filtered_text_test = Tokenize_text(filtered_testText)
+
+# convert tokens into sentences filtered
+filtered_training2sentences = convertTokensToSentences(filtered_text_training)
+filtered_text2sentences = convertTokensToSentences(filtered_text_test)
+
+# Train and predict using classifiers
+multiNomial = MultinomialNB_Classifier(training2sentences, text2sentences, trainLabels)
+knearst = knearstNeighbour_Classifier(training2sentences, text2sentences, trainLabels)
+randomForest = randomForest_Classifier(training2sentences, text2sentences, trainLabels)
+
+# Train and predict using classifiers of filtered
+filtered_multiNomial = MultinomialNB_Classifier(filtered_training2sentences, filtered_text2sentences, filtered_trainLabels)
+filtered_knearst = knearstNeighbour_Classifier(filtered_training2sentences, filtered_text2sentences, filtered_trainLabels)
+filtered_randomForest = randomForest_Classifier(filtered_training2sentences, filtered_text2sentences, filtered_trainLabels)
+
+print("Before Filter")
+print("---------------")
+print("Multinomial Naive Bayes F1 Score")
+print(str(evaluateResult(testLabels, multiNomial)) + "%")
+
+print("K nearset Neigbour F1 Score")
+print(str(evaluateResult(testLabels, knearst)) + "%")
+
+print("Random Forest F1 Score")
+print(str(evaluateResult(testLabels, randomForest)) + "%")
+print("_________________________")
+
+print("After Filter")
+print("---------------")
+print("Multinomial Naive Bayes F1 Score")
+print(str(evaluateResult(filtered_testLabels, filtered_multiNomial)) + "%")
+
+print("K nearset Neigbour F1 Score")
+print(str(evaluateResult(filtered_testLabels, filtered_knearst)) + "%")
+
+print("Random Forest F1 Score")
+print(str(evaluateResult(filtered_testLabels, filtered_randomForest)) + "%")
+print("_________________________")
